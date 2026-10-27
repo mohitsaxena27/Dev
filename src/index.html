@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RETRO-AGENT // code impact terminal</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=VT323&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: 'IBM Plex Mono', 'Courier New', monospace;
+    background: #060a06;
+    color: #b8ffb8;
+    font-size: 14px;
+    line-height: 1.6;
+    overflow: hidden;
+  }
+
+  /* very subtle scanlines, only on the chrome, not the text */
+  .crt-shell {
+    height: 100vh;
+    padding: 12px;
+    background: #161616;
+    box-shadow: inset 0 0 30px #000, 0 0 20px #000;
+  }
+  .crt-screen {
+    height: 100%;
+    background: #0a100a;
+    border: 3px solid #1f3a1f;
+    border-radius: 10px;
+    box-shadow: inset 0 0 40px #000, inset 0 0 80px rgba(0,255,0,0.03);
+    display: flex;
+    overflow: hidden;
+  }
+
+  /* ---------- SIDEBAR ---------- */
+  .sidebar {
+    background: #080e08;
+    border-right: 2px solid #1f3a1f;
+    font-size: 13px;
+    color: #8fce8f;
+  }
+  .sidebar h1 {
+    font-family: 'VT323', monospace;
+    font-size: 1.7rem;
+    letter-spacing: 2px;
+    color: #9dff9d;
+    text-shadow: 0 0 6px rgba(80,255,80,0.5);
+  }
+  .sidebar .label {
+    color: #4f9f4f;
+    font-size: 11px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    font-weight: 600;
+  }
+  .sidebar .value {
+    color: #c8ffc8;
+    font-weight: 500;
+    word-break: break-all;
+  }
+  .led {
+    display: inline-block;
+    width: 7px; height: 7px;
+    background: #3ee63e;
+    border-radius: 50%;
+    box-shadow: 0 0 6px #0f0;
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+  /* ---------- CHAT AREA ---------- */
+  .chat-header {
+    background: #080e08;
+    border-bottom: 2px solid #1f3a1f;
+    font-size: 13px;
+  }
+  .chat-header .title {
+    color: #b8ffb8;
+    text-shadow: 0 0 4px rgba(80,255,80,0.35);
+    letter-spacing: 0.5px;
+    font-weight: 500;
+  }
+  .chat-thread {
+    background: #0a100a;
+  }
+
+  /* message cards – clear, sharp text */
+  .msg-user {
+    background: #0f1f0f;
+    border: 1px solid #2e7d32;
+    border-left: 3px solid #4fcf4f;
+    box-shadow: 0 0 0 1px #0a150a;
+    color: #e0ffe0;
+    font-size: 14px;
+    line-height: 1.65;
+  }
+  .msg-user .prefix {
+    color: #4fcf4f;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    display: block;
+    margin-bottom: 6px;
+  }
+  .msg-agent {
+    background: #0b140b;
+    border: 1px solid #1f6b1f;
+    border-left: 3px solid #3ee63e;
+    box-shadow: 0 0 0 1px #081008;
+  }
+  .msg-agent .prefix {
+    color: #4fcf4f;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    display: block;
+    margin-bottom: 6px;
+  }
+
+  /* ---------- INPUT ---------- */
+  .input-wrap {
+    background: #080e08;
+    border-top: 2px solid #1f3a1f;
+  }
+  .input-box {
+    background: #0b140b;
+    border: 2px solid #2e7d32;
+    box-shadow: inset 0 0 8px #000;
+  }
+  .input-box:focus-within {
+    border-color: #5fff5f;
+    box-shadow: inset 0 0 8px #000, 0 0 10px rgba(80,255,80,0.15);
+  }
+  .input-box textarea {
+    background: transparent;
+    color: #e0ffe0;
+    caret-color: #5fff5f;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  .input-box textarea::placeholder { color: #4a7a4a; }
+  .input-box .prompt-caret {
+    color: #5fff5f;
+    font-weight: 700;
+    font-size: 18px;
+  }
+
+  /* buttons */
+  .retro-btn {
+    background: #0f1f0f;
+    border: 1px solid #2e7d32;
+    color: #c8ffc8;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    transition: all 0.1s;
+    padding: 4px 10px;
+  }
+  .retro-btn:hover:not(:disabled) {
+    background: #1a3a1a;
+    border-color: #5fff5f;
+    color: #e0ffe0;
+  }
+  .retro-btn:active:not(:disabled) { transform: translateY(1px); }
+  .retro-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* ---------- MARKDOWN (clear, readable) ---------- */
+  .md {
+    font-family: 'IBM Plex Mono', monospace;
+    line-height: 1.7;
+    color: #d4ffd4;
+    font-size: 14px;
+    overflow-wrap: anywhere;
+  }
+  .md h1, .md h2, .md h3, .md h4 {
+    color: #9dff9d;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    margin: 1.2em 0 .5em;
+    line-height: 1.3;
+  }
+  .md h1 { font-size: 1.35rem; border-bottom: 1px solid #2e7d32; padding-bottom: .3rem; }
+  .md h2 { font-size: 1.15rem; border-bottom: 1px solid #2e7d32; padding-bottom: .2rem; }
+  .md h3 { font-size: 1.02rem; }
+  .md h4 { font-size: 0.95rem; }
+  .md p { margin: .7em 0; }
+  .md ul, .md ol { margin: .7em 0; padding-left: 1.5rem; }
+  .md ul { list-style: square; }
+  .md ol { list-style: decimal; }
+  .md li { margin: .25em 0; }
+  .md li::marker { color: #4fcf4f; }
+  .md a { color: #8fff8f; text-decoration: underline; }
+  .md a:hover { color: #d4ffd4; }
+  .md strong { color: #e8ffe8; font-weight: 600; }
+  .md em { color: #a8d4a8; }
+  .md code {
+    background: #0f1f0f;
+    border: 1px solid #1f4a1f;
+    padding: .1rem .35rem;
+    color: #b8ffb8;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.9em;
+    border-radius: 2px;
+  }
+  .md pre {
+    background: #070f07;
+    border: 1px solid #1f5a1f;
+    border-radius: 3px;
+    padding: 0.9rem 1rem;
+    margin: 0.9em 0;
+    overflow-x: auto;
+  }
+  .md pre code {
+    background: transparent;
+    border: none;
+    padding: 0;
+    color: #c8ffc8;
+    font-size: 13px;
+    line-height: 1.55;
+  }
+  .md blockquote {
+    border-left: 3px solid #2e7d32;
+    margin: 0.9em 0;
+    padding: .2em 1em;
+    color: #a8cfa8;
+    background: #0b150b;
+  }
+  .md hr { border: 0; border-top: 1px solid #1f4a1f; margin: 1.1em 0; }
+  .md table {
+    border-collapse: collapse;
+    margin: 0.9em 0;
+    font-size: 13px;
+  }
+  .md th, .md td { border: 1px solid #1f4a1f; padding: .4rem .7rem; text-align: left; }
+  .md th { background: #0f1f0f; color: #d4ffd4; font-weight: 600; }
+
+  /* streaming cursor + dots */
+  .dots span {
+    display: inline-block;
+    width: 6px; height: 6px;
+    margin-right: 3px;
+    background: #3ee63e;
+    border-radius: 1px;
+    animation: bounce 1.2s infinite;
+  }
+  .dots span:nth-child(2) { animation-delay: .15s; }
+  .dots span:nth-child(3) { animation-delay: .3s; }
+  @keyframes bounce {
+    0%, 60%, 100% { transform: translateY(0); opacity: .4; }
+    30% { transform: translateY(-4px); opacity: 1; }
+  }
+  .streaming .md > *:last-child::after {
+    content: '▊';
+    color: #5fff5f;
+    margin-left: 2px;
+    animation: blink 1s steps(2) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* scrollbar */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: #080e08; }
+  ::-webkit-scrollbar-thumb { background: #1f5a1f; border: 2px solid #080e08; }
+  ::-webkit-scrollbar-thumb:hover { background: #2e7d32; }
+
+  .knob {
+    width: 9px; height: 9px;
+    background: radial-gradient(circle at 30% 30%, #3a3a3a, #0a0a0a);
+    border-radius: 50%;
+    box-shadow: inset 0 0 2px #000;
+  }
+  .knob-led {
+    width: 6px; height: 6px;
+    background: #3ee63e;
+    border-radius: 50%;
+    box-shadow: 0 0 6px #0f0;
+    animation: pulse 2s infinite;
+  }
+
+  .hidden { display: none !important; }
+
+  @media (max-width: 768px) {
+    .crt-shell { padding: 6px; }
+    .crt-screen { border-radius: 6px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="crt-shell">
+  <div class="crt-screen">
+
+    <!-- ===== SIDEBAR ===== -->
+    <aside id="sidebar" class="hidden md:flex w-72 shrink-0 flex-col sidebar overflow-y-auto">
+      <div class="px-4 py-4 border-b-2 border-[#1f3a1f]">
+        <h1 class="leading-none">CODE_IMPACT</h1>
+        <p class="text-[#4f9f4f] text-[10px] mt-1 tracking-widest">/// AGENT TERMINAL v2.1</p>
+      </div>
+
+      <div class="p-4 space-y-4">
+        <div>
+          <div class="label">▶ PROJECT</div>
+          <div id="projName" class="value text-sm mt-1">Loading…</div>
+        </div>
+        <div>
+          <div class="label">▶ SUMMARY FILE</div>
+          <div id="summaryState" class="value text-sm mt-1">Checking…</div>
+        </div>
+        <div>
+          <div class="label">▶ MODEL</div>
+          <div class="flex items-center gap-2 mt-1">
+            <span id="dot" class="w-2.5 h-2.5 rounded-full bg-slate-400 shrink-0"></span>
+            <span id="healthText" class="value text-sm" aria-live="polite">Checking services…</span>
+          </div>
+        </div>
+        <div>
+          <div class="label">▶ SESSION TOKENS</div>
+          <div id="sessionTokens" class="value text-sm mt-1">None yet</div>
+        </div>
+
+        <div class="pt-3 border-t border-[#1f3a1f] text-[#4f9f4f] text-[11px] leading-relaxed">
+          [ SYSTEM ] Each question reads the summary file, then fetches real code from GitHub.
+        </div>
+
+        <div class="flex items-center gap-3 pt-3 text-[10px] text-[#4f9f4f] tracking-widest">
+          <span class="led"></span><span>PWR</span>
+          <span class="led" style="animation-delay:.4s"></span><span>RX</span>
+          <span class="led" style="animation-delay:.8s"></span><span>TX</span>
+        </div>
+
+        <div class="flex items-center gap-3 pt-2">
+          <div class="knob"></div>
+          <div class="knob"></div>
+          <div class="knob-led"></div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ===== MAIN CHAT ===== -->
+    <div class="flex-1 flex flex-col min-w-0">
+
+      <header class="chat-header flex items-center justify-between gap-3 px-4 md:px-6 py-2.5">
+        <div class="flex items-center gap-3 min-w-0">
+          <button id="menuBtn" class="md:hidden retro-btn" aria-label="Toggle project panel">PROJ</button>
+          <span class="text-[#4f9f4f] text-sm">┌─[</span>
+          <p id="repoLabel" class="title font-mono text-sm truncate"></p>
+          <span class="text-[#4f9f4f] text-sm">]─┐</span>
+        </div>
+        <button id="newBtn" class="retro-btn">+ NEW SESSION</button>
+      </header>
+
+      <div id="thread" class="chat-thread flex-1 overflow-y-auto px-4 md:px-6 py-6">
+        <div id="messages" class="mx-auto max-w-3xl space-y-5"></div>
+      </div>
+
+      <div class="input-wrap px-4 md:px-6 pb-4 pt-3">
+        <div class="mx-auto max-w-3xl">
+          <div class="flex flex-wrap gap-2 mb-2">
+            <button id="readmeBtn" class="retro-btn">GEN README</button>
+          </div>
+          <div class="input-box flex items-end gap-2 p-2">
+            <span class="prompt-caret select-none pl-1">&gt;</span>
+            <label for="question" class="sr-only">Your question</label>
+            <textarea id="question" rows="1" placeholder="ask about the code ..." class="flex-1 resize-none px-2 py-2 bg-transparent focus:outline-none max-h-40"></textarea>
+            <button id="stopBtn" class="hidden retro-btn">STOP</button>
+            <button id="sendBtn" class="retro-btn">SEND</button>
+          </div>
+          <p class="text-[10px] text-[#4a7a4a] mt-2 tracking-wide">ENTER → TRANSMIT · SHIFT+ENTER → NEWLINE · EACH QUERY INDEPENDENT</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const thread = $('thread'), messages = $('messages'), input = $('question');
+let controller = null, busy = false;
+
+marked.setOptions({ gfm: true, breaks: false });
+DOMPurify.addHook('afterSanitizeAttributes', (n) => {
+  if (n.tagName === 'A') { n.setAttribute('target', '_blank'); n.setAttribute('rel', 'noopener noreferrer'); }
+});
+const renderMd = (t) => DOMPurify.sanitize(marked.parse(t));
+const nearBottom = () => thread.scrollHeight - thread.scrollTop - thread.clientHeight < 80;
+const scrollDown = () => { thread.scrollTop = thread.scrollHeight; };
+
+/* ---------- EMPTY STATE ---------- */
+function showEmpty() {
+  messages.innerHTML = '';
+  const box = document.createElement('div');
+  box.id = 'empty';
+  box.className = 'text-center pt-10 space-y-4 font-mono';
+  box.innerHTML = `
+    <div class="text-[#4f9f4f] text-xs tracking-widest">┌──────────────────────────────┐</div>
+    <h2 class="text-3xl text-[#9dff9d] tracking-widest" style="font-family:'VT323',monospace;">AGENT READY</h2>
+    <div class="text-[#4f9f4f] text-xs tracking-widest">└──────────────────────────────┘</div>
+    <p class="text-[#7fae7f] max-w-md mx-auto text-[13px] border border-[#1f3a1f] p-3 bg-[#0b150b]">
+      &gt; ASK ABOUT AN ENDPOINT, A FEATURE OR A CHANGE.<br>
+      &gt; THE AGENT READS RELEVANT CODE BEFORE ANSWERING.
+    </p>
+    <div class="flex flex-col items-center gap-2 pt-2 max-w-xl mx-auto">
+      <button class="retro-btn w-full text-left" onclick="send('Which API endpoint is used for generating documentation?')">&gt; WHICH API ENDPOINT IS USED FOR GENERATING DOCUMENTATION?</button>
+      <button class="retro-btn w-full text-left" onclick="send('Which endpoint does the Sakpilot chat use?')">&gt; WHICH ENDPOINT DOES THE SAKPILOT CHAT USE?</button>
+      <button class="retro-btn w-full text-left" onclick="send('What do I need to update to change the impact analysis endpoint?')">&gt; WHAT DO I NEED TO UPDATE TO CHANGE THE IMPACT ANALYSIS ENDPOINT?</button>
+    </div>
+    <div class="text-[10px] text-[#2e5a2e] pt-6 tracking-widest">[ SYSTEM: AWAITING INPUT ] <span class="blink">_</span></div>
+  `;
+  messages.appendChild(box);
+}
+
+/* ---------- MESSAGES ---------- */
+function addUser(text) {
+  $('empty')?.remove();
+  const wrap = document.createElement('div');
+  wrap.className = 'flex justify-end';
+  const bubble = document.createElement('div');
+  bubble.className = 'msg-user max-w-[85%] px-4 py-2.5 whitespace-pre-wrap';
+  bubble.innerHTML = `<span class="prefix">USER@TERMINAL:~$</span>${text.replace(/</g,'&lt;')}`;
+  wrap.appendChild(bubble);
+  messages.appendChild(wrap);
+  scrollDown();
+}
+
+function addAssistant() {
+  const wrap = document.createElement('div');
+  wrap.className = 'streaming';
+  wrap.innerHTML = `
+    <div class="card msg-agent px-4 py-3">
+      <p class="status flex items-center gap-2 text-[13px] text-[#9dff9d]">
+        <span class="dots" aria-hidden="true"><span></span><span></span><span></span></span>
+        <span class="st">THINKING…</span>
+      </p>
+      <div class="md mt-1"></div>
+      <div class="tools hidden mt-3 pt-3 border-t border-[#1f3a1f] flex gap-2">
+        <button data-act="copy" class="retro-btn">COPY</button>
+        <button data-act="download" class="retro-btn">DOWNLOAD .MD</button>
+      </div>
+    </div>`;
+  messages.appendChild(wrap);
+  scrollDown();
+  const q = (s) => wrap.querySelector(s);
+  return { wrap, card: q('.card'), status: q('.status'), st: q('.st'), body: q('.md'), tools: q('.tools'), raw: '' };
+}
+
+function showFiles(msg, files) {
+  if (!files.length) return;
+  const d = document.createElement('details');
+  d.className = 'mb-2 text-[12px] text-[#7fae7f] border border-[#1f3a1f] p-2 bg-[#0b150b]';
+  d.innerHTML = `<summary class="cursor-pointer select-none text-[#9dff9d] tracking-wide">&gt; READ ${files.length} FILE${files.length > 1 ? 'S' : ''} FROM GITHUB</summary><ul class="mt-1.5 space-y-0.5 text-[11px] break-all text-[#6c9e6c]"></ul>`;
+  const ul = d.querySelector('ul');
+  for (const f of files) { const li = document.createElement('li'); li.textContent = '• ' + f; ul.appendChild(li); }
+  msg.card.insertBefore(d, msg.status);
+}
+
+const fmt = (n) => Number(n || 0).toLocaleString();
+let sessionTokens = { input: 0, output: 0, questions: 0 };
+
+function showUsage(msg, u) {
+  const total = u.total ?? (u.input + u.output);
+  const p = document.createElement('p');
+  p.className = 'mt-3 text-[11px] text-[#6c9e6c] border-t border-[#1f3a1f] pt-2 tracking-wide';
+  p.textContent = `[ TOKENS ] ${fmt(u.input)} IN · ${fmt(u.output)} OUT · ${fmt(total)} TOTAL`
+    + (u.calls > 1 ? ` · ${u.calls} CALLS` : '') + (u.estimated ? ' (EST)' : '');
+  if (u.num_ctx && u.peak_input >= u.num_ctx * 0.95) {
+    const warn = document.createElement('span');
+    warn.className = 'block text-[#ff7b7b] mt-1 text-[10px]';
+    warn.textContent = `⚠ CONTEXT LIMIT (${fmt(u.peak_input)}/${fmt(u.num_ctx)}). RAISE NUM_CTX OR LOWER MAX_FILES.`;
+    p.appendChild(warn);
+  }
+  msg.card.insertBefore(p, msg.tools);
+
+  sessionTokens.input += u.input; sessionTokens.output += u.output; sessionTokens.questions += 1;
+  $('sessionTokens').textContent =
+    `${fmt(sessionTokens.input + sessionTokens.output)} TOKENS / ${sessionTokens.questions} ANS (${fmt(sessionTokens.input)} IN, ${fmt(sessionTokens.output)} OUT)`;
+}
+
+function wireTools(msg, filename) {
+  msg.tools.classList.remove('hidden');
+  msg.tools.onclick = async (e) => {
+    const act = e.target.dataset.act;
+    if (act === 'copy') { await navigator.clipboard.writeText(msg.raw); e.target.textContent = 'COPIED'; setTimeout(() => e.target.textContent = 'COPY', 1500); }
+    if (act === 'download') {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([msg.raw], { type: 'text/markdown' }));
+      a.download = filename; a.click(); URL.revokeObjectURL(a.href);
+    }
+  };
+}
+
+function setBusy(b) {
+  busy = b;
+  $('sendBtn').classList.toggle('hidden', b);
+  $('stopBtn').classList.toggle('hidden', !b);
+  $('readmeBtn').disabled = b;
+}
+
+/* ---------- STREAMING ---------- */
+async function streamReply(url, body, filename) {
+  const msg = addAssistant();
+  controller = new AbortController();
+  setBusy(true);
+  let pending = false;
+
+  const paint = () => {
+    pending = false;
+    const stick = nearBottom();
+    msg.body.innerHTML = renderMd(msg.raw);
+    if (stick) scrollDown();
+  };
+  const handle = (raw) => {
+    const ev = (raw.match(/^event: (.+)$/m) || [])[1];
+    const d = (raw.match(/^data: (.+)$/m) || [])[1];
+    if (!ev || !d) return;
+    const data = JSON.parse(d);
+    if (ev === 'status') msg.st.textContent = data.message.toUpperCase();
+    else if (ev === 'files') showFiles(msg, data.files);
+    else if (ev === 'usage') showUsage(msg, data);
+    else if (ev === 'token') {
+      msg.status.remove();
+      msg.raw += data.token;
+      if (!pending) { pending = true; requestAnimationFrame(paint); }
+    } else if (ev === 'error') msg.raw += (msg.raw ? '\n\n' : '') + `**ERROR:** ${data.error}`;
+  };
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body), signal: controller.signal,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || res.statusText);
+    }
+    const reader = res.body.getReader(), decoder = new TextDecoder();
+    let buf = '';
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const parts = buf.split('\n\n');
+      buf = parts.pop();
+      parts.forEach(handle);
+    }
+  } catch (e) {
+    if (e.name === 'AbortError') msg.raw += msg.raw ? '\n\n*[ STOPPED ]*' : '*[ STOPPED ]*';
+    else msg.raw += (msg.raw ? '\n\n' : '') + `**ERROR:** ${e.message}`;
+  } finally {
+    msg.status.remove();
+    paint();
+    msg.wrap.classList.remove('streaming');
+    if (msg.raw && !msg.raw.startsWith('**ERROR')) wireTools(msg, filename);
+    setBusy(false);
+    input.focus();
+  }
+}
+
+function send(text) {
+  text = (text ?? input.value).trim();
+  if (busy || text.length < 3) return;
+  input.value = ''; autosize();
+  addUser(text);
+  streamReply('/impact/stream', { question: text }, 'answer.md');
+}
+
+$('sendBtn').onclick = () => send();
+$('stopBtn').onclick = () => controller?.abort();
+$('readmeBtn').onclick = () => {
+  if (busy) return;
+  addUser('Generate a README for this project.');
+  streamReply('/readme/stream', {}, 'README.md');
+};
+$('newBtn').onclick = () => { controller?.abort(); showEmpty(); input.focus(); };
+input.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); }
+});
+const autosize = () => { input.style.height = 'auto'; input.style.height = Math.min(input.scrollHeight, 160) + 'px'; };
+input.addEventListener('input', autosize);
+$('menuBtn').onclick = () => $('sidebar').classList.toggle('hidden');
+
+/* ---------- HEALTH ---------- */
+async function loadHealth() {
+  try {
+    const h = await (await fetch('/health')).json();
+    const ok = h.ollama.reachable, p = h.project || {};
+    $('dot').className = 'w-2.5 h-2.5 rounded-full shrink-0 ' + (ok ? 'bg-emerald-500' : 'bg-red-500');
+    $('healthText').textContent = ok ? `READY: ${h.ollama.configured_model}` : 'OLLAMA OFFLINE — CHECK BASE_URL';
+    const name = p.owner && p.repo ? `${p.owner}/${p.repo}` : 'NOT SET — ADD GITHUB_OWNER & GITHUB_REPO';
+    $('projName').textContent = name;
+    $('repoLabel').textContent = p.owner && p.repo ? name : '';
+    $('summaryState').textContent = p.analysis_exists ? `LOADED: ${p.analysis_file}` : `MISSING: ${p.analysis_file}`;
+    $('summaryState').className = p.analysis_exists ? 'value text-sm mt-1' : 'value text-sm mt-1 text-[#ff7b7b]';
+  } catch {
+    $('dot').className = 'w-2.5 h-2.5 rounded-full shrink-0 bg-red-500';
+    $('healthText').textContent = 'API NOT RESPONDING';
+  }
+}
+
+showEmpty();
+loadHealth();
+</script>
+</body>
+</html>
